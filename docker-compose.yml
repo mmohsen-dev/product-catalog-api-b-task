@@ -1,0 +1,129 @@
+services:
+  # Main application service
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/bosta_catalog
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - JWT_SECRET=super-secret-jwt-key-change-in-production
+      - LOG_LEVEL=info
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - bosta-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MongoDB database
+  mongodb:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=bosta_catalog
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - bosta-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Elasticsearch for advanced search (optional)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - bootstrap.memory_lock=true
+      - cluster.name=bosta-cluster
+      - node.name=bosta-node-1
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - bosta-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Setup service (runs once to initialize all data)
+  setup:
+    build: .
+    command: ["npm", "run", "setup:all"]
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/bosta_catalog
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - bosta-network
+    restart: "no"
+
+  # MongoDB Express (GUI for MongoDB - development only)
+  mongo-express:
+    image: mongo-express:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin123
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - bosta-network
+    restart: unless-stopped
+    profiles:
+      - debug
+
+
+volumes:
+  mongodb_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
+networks:
+  bosta-network:
+    driver: bridge 
