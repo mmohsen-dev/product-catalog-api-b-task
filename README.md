@@ -15,8 +15,8 @@ A simple product catalog microservice with search functionality. Built with Node
 1. **Clone and start**
 
    ```bash
-   git clone <repo-url>
-   cd bosta-product-catalog
+   git clone https://github.com/mmohsen-dev/product-catalog-api-b-task.git
+   cd product-catalog-api-b-task
    docker-compose up -d
    ```
 
